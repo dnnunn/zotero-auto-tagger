@@ -1,9 +1,9 @@
 {
   "name": "zotero-auto-tagger",
-  "version": "0.1.0",
-  "description": "A Zotero plugin to automatically generate and add tags to references using PubMed and AI",
-  "author": "dnnunn",
-  "license": "AGPL-3.0",
+  "version": "0.2.0",
+  "description": "AI-powered auto-tagging for Zotero. Automatically generates keyword tags using PubMed MeSH terms for biomedical content and Claude AI for everything else.",
+  "author": "David Nunn",
+  "license": "MIT",
   "homepage": "https://github.com/dnnunn/zotero-auto-tagger",
   "repository": {
     "type": "git",
@@ -12,24 +12,27 @@
   "bugs": {
     "url": "https://github.com/dnnunn/zotero-auto-tagger/issues"
   },
+  "keywords": [
+    "zotero",
+    "plugin",
+    "reference-manager",
+    "auto-tagging",
+    "pubmed",
+    "mesh-terms",
+    "claude-ai",
+    "artificial-intelligence",
+    "research-tools",
+    "bibliography"
+  ],
   "scripts": {
-    "start": "node scripts/dev.js",
     "build": "node scripts/build.js",
-    "release": "node scripts/release.js",
-    "lint": "eslint src/**/*.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "dependencies": {
-    "zotero-plugin-toolkit": "^2.3.0"
+    "clean": "rm -rf build",
+    "release": "npm run clean && npm run build && cd build && zip -r ../zotero-auto-tagger.xpi * -x '*.DS_Store' && cd .."
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "esbuild": "^0.19.0",
-    "eslint": "^8.50.0",
-    "replace-in-file": "^7.0.0",
-    "archiver": "^6.0.0",
-    "chalk": "^5.3.0",
-    "chokidar": "^3.5.3",
-    "fs-extra": "^11.1.1"
+    "fs-extra": "^11.2.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

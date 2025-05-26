@@ -1,0 +1,19 @@
+{
+  "addons": {
+    "zotero-auto-tagger@dnnunn.github.io": {
+      "updates": [
+        {
+          "version": "0.2.0",
+          "update_link": "https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.2.0/zotero-auto-tagger.xpi",
+          "update_hash": "sha256:HASH_WILL_BE_GENERATED_AFTER_BUILD",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "7.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

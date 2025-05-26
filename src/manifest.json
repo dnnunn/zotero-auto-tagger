@@ -1,20 +1,23 @@
 {
   "manifest_version": 2,
   "name": "Zotero Auto-Tagger",
-  "version": "0.1.0",
-  "description": "Automatically tag Zotero items with keywords from PubMed",
+  "version": "0.2.0",
+  "description": "Automatically tag Zotero items using PubMed and Claude AI",
   "homepage_url": "https://github.com/dnnunn/zotero-auto-tagger",
   "author": "David Nunn",
+  "id": "zotero-auto-tagger@dnnunn.github.io",
+  "icons": {
+    "16": "chrome/content/icons/icon-16.png",
+    "32": "chrome/content/icons/icon-32.png",
+    "48": "chrome/content/icons/icon-48.png",
+    "96": "chrome/content/icons/icon-96.png"
+  },
   "applications": {
     "zotero": {
-      "id": "zotero-auto-tagger@dnnunn.github.io",
-      "update_url": "https://raw.githubusercontent.com/dnnunn/zotero-auto-tagger/main/update.json",
-      "strict_min_version": "6.999",
-      "strict_max_version": "7.0.*"
+      "id": "zotero@chnm.gmu.edu",
+      "strict_min_version": "7.0",
+      "strict_max_version": "7.*",
+      "update_url": "https://raw.githubusercontent.com/dnnunn/zotero-auto-tagger/main/update.json"
     }
-  },
-  "icons": {
-    "48": "chrome/content/icons/icon@48px.png",
-    "96": "chrome/content/icons/icon@96px.png"
   }
 }
