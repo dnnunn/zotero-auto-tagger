@@ -9,4 +9,8 @@ const config = {
   updateURL: "https://raw.githubusercontent.com/dnnunn/zotero-auto-tagger/main/update.json"
 };
 
-export default config;
+if (typeof module !== 'undefined') {
+  module.exports = { default: config };
+} else {
+  window.ZoteroAutoTaggerConfig = config;
+}
