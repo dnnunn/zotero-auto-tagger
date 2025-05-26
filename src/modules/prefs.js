@@ -1,4 +1,10 @@
+import { registerPreferences } from './prefDefaults.js';
+
 export function registerPrefs() {
+  // Register default preferences
+  registerPreferences();
+  
+  // Register preference pane
   const prefOptions = {
     pluginID: "autoTagger",
     src: rootURI + "chrome/content/preferences/index.xhtml",
