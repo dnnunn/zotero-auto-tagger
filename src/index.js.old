@@ -6,6 +6,11 @@ if (typeof Zotero !== 'undefined') {
 
 (() => {
   try {
+    // Import the tag generator module
+    const { TagGenerator } = ChromeUtils.import(
+      "chrome://zotero-auto-tagger/content/modules/tagGenerator.js"
+    );
+    
     // Configuration
     const config = {
       addonName: "Zotero Auto-Tagger",
@@ -22,7 +27,8 @@ if (typeof Zotero !== 'undefined') {
         "autoTag.title": "Auto-Tagger",
         "autoTag.noItems": "No items selected",
         "autoTag.complete": "Tagged ${count} items",
-        "autoTag.error": "Error tagging items: ${error}"
+        "autoTag.error": "Error tagging items: ${error}",
+        "autoTag.processing": "Processing ${current} of ${total} items..."
       };
       return strings[key] || key;
     }
@@ -63,14 +69,21 @@ if (typeof Zotero !== 'undefined') {
     class AutoTagger {
       constructor() {
         this.initialized = false;
+        this.tagGenerator = null;
         Zotero.debug("Auto-Tagger: AutoTagger instance created");
       }
 
       async init() {
         if (this.initialized) return;
         
-        Zotero.debug("Auto-Tagger: Initializing UI");
+        Zotero.debug("Auto-Tagger: Initializing");
+        
+        // Initialize tag generator
+        this.tagGenerator = new TagGenerator();
+        
+        // Register UI
         registerMenus();
+        
         this.initialized = true;
         Zotero.debug("Auto-Tagger: Initialization complete");
       }
@@ -83,18 +96,50 @@ if (typeof Zotero !== 'undefined') {
             return;
           }
           
-          // For now, just add test tags
+          // Filter to regular items only
+          const regularItems = items.filter(item => item.isRegularItem());
+          if (regularItems.length === 0) {
+            alert("No regular items selected");
+            return;
+          }
+          
+          Zotero.debug(`Auto-Tagger: Processing ${regularItems.length} items`);
+          
           let tagged = 0;
-          for (const item of items) {
-            if (item.isRegularItem()) {
-              item.addTag("auto-tagged");
-              item.addTag("test-tag");
-              await item.saveTx();
-              tagged++;
+          let errors = 0;
+          
+          // Process each item
+          for (let i = 0; i < regularItems.length; i++) {
+            const item = regularItems[i];
+            const progress = getString("autoTag.processing")
+              .replace("${current}", i + 1)
+              .replace("${total}", regularItems.length);
+            
+            Zotero.debug(`Auto-Tagger: ${progress}`);
+            
+            try {
+              // Use the tag generator to process the item
+              const success = await this.tagGenerator.processItem(item);
+              if (success) {
+                tagged++;
+              } else {
+                errors++;
+                Zotero.debug(`Auto-Tagger: Failed to tag item ${item.id}`);
+              }
+            } catch (e) {
+              errors++;
+              Zotero.logError(e);
+              Zotero.debug(`Auto-Tagger: Error processing item ${item.id}: ${e.message}`);
             }
           }
           
-          alert(getString("autoTag.complete").replace("${count}", tagged));
+          // Report results
+          let message = getString("autoTag.complete").replace("${count}", tagged);
+          if (errors > 0) {
+            message += `\n${errors} items failed to process.`;
+          }
+          alert(message);
+          
         } catch (e) {
           Zotero.logError(e);
           alert(getString("autoTag.error").replace("${error}", e.message));

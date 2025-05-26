@@ -4,7 +4,7 @@
     constructor() {
       this.baseURL = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
       this.toolName = 'ZoteroAutoTagger';
-      this.email = 'your-email@example.com'; // Update this
+      this.email = 'dnnunn@gmail.com'; // Update this
       this.apiKey = Zotero.Prefs.get('extensions.autoTagger.pubmedApiKey') || null;
       this.rateLimit = 350; // milliseconds between requests
       this.lastRequest = 0;
