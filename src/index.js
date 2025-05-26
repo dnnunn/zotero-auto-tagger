@@ -1,106 +1,114 @@
-// Define AutoTagger in the global scope so bootstrap.js can access it
-var AutoTagger;
+"use strict";
 
-(function() {
-  // Check if we're in the right context
-  if (typeof Zotero === 'undefined') {
-    return;
-  }
+if (typeof Zotero !== 'undefined') {
+  Zotero.debug("Auto-Tagger: index.js loaded");
+}
 
-  AutoTagger = class {
-    constructor() {
-      this.id = "zotero-auto-tagger@dnnunn.github.io";
-      this.version = "0.1.0";
-      this.rootURI = "";
-      this.initialized = false;
-      this.ui = null;
-      this.prefs = null;
-      this.tagGenerator = null;
+(() => {
+  try {
+    // Configuration
+    const config = {
+      addonName: "Zotero Auto-Tagger",
+      addonID: "zotero-auto-tagger@dnnunn.github.io",
+      addonRef: "autotagger",
+      addonInstance: "AutoTagger"
+    };
+
+    // Simple string helper
+    function getString(key) {
+      const strings = {
+        "menu.autoTag": "Auto-Tag Items",
+        "menu.autoTagSelected": "Auto-Tag Selected Items",
+        "autoTag.title": "Auto-Tagger",
+        "autoTag.noItems": "No items selected",
+        "autoTag.complete": "Tagged ${count} items",
+        "autoTag.error": "Error tagging items: ${error}"
+      };
+      return strings[key] || key;
     }
 
-    async startup({ id, version, rootURI }) {
-      this.rootURI = rootURI;
-      await Zotero.uiReadyPromise;
+    // Register menu items
+    function registerMenus() {
+      Zotero.debug("Auto-Tagger: Registering menus");
+      const doc = Zotero.getMainWindow().document;
       
-      try {
-        // Load all modules in correct order
-        const modules = [
-          'modules/prefDefaults.js',
-          'modules/prefs.js',
-          'modules/tagProcessor.js',
-          'modules/tagCache.js',
-          'modules/pubmedAPI.js',
-          'modules/tagGenerator.js',
-          'modules/ui.js'
-        ];
+      // Tools menu
+      const toolsMenu = doc.getElementById("menu_ToolsPopup");
+      if (toolsMenu) {
+        const menuitem = doc.createXULElement("menuitem");
+        menuitem.id = `${config.addonRef}-tools-menu`;
+        menuitem.setAttribute("label", getString("menu.autoTag"));
+        menuitem.setAttribute("oncommand", "Zotero.AutoTagger.tagSelectedItems();");
+        toolsMenu.appendChild(menuitem);
+        Zotero.debug("Auto-Tagger: Added to Tools menu");
+      } else {
+        Zotero.debug("Auto-Tagger: Tools menu not found");
+      }
+      
+      // Item context menu
+      const itemMenu = doc.getElementById("zotero-itemmenu");
+      if (itemMenu) {
+        const menuitem = doc.createXULElement("menuitem");
+        menuitem.id = `${config.addonRef}-item-menu`;
+        menuitem.setAttribute("label", getString("menu.autoTagSelected"));
+        menuitem.setAttribute("oncommand", "Zotero.AutoTagger.tagSelectedItems();");
+        itemMenu.appendChild(menuitem);
+        Zotero.debug("Auto-Tagger: Added to item context menu");
+      } else {
+        Zotero.debug("Auto-Tagger: Item menu not found");
+      }
+    }
+
+    // Main class
+    class AutoTagger {
+      constructor() {
+        this.initialized = false;
+        Zotero.debug("Auto-Tagger: AutoTagger instance created");
+      }
+
+      async init() {
+        if (this.initialized) return;
         
-        for (const module of modules) {
-          Services.scriptloader.loadSubScript(
-            `${rootURI}chrome/content/${module}`,
-            this
-          );
-        }
-        
-        // Initialize components
-        if (typeof this.registerPrefs === 'function') {
-          this.registerPrefs();
-        }
-        
-        if (typeof this.TagGenerator === 'function') {
-          this.tagGenerator = new this.TagGenerator();
-          // Pass loaded modules to TagGenerator
-          this.tagGenerator.PubMedAPI = this.PubMedAPI;
-          this.tagGenerator.TagCache = this.TagCache;
-          this.tagGenerator.TagProcessor = this.TagProcessor;
-        }
-        
-        if (typeof this.UI === 'function') {
-          this.ui = new this.UI(this);
-          await this.ui.init();
-        }
-        
+        Zotero.debug("Auto-Tagger: Initializing UI");
+        registerMenus();
         this.initialized = true;
-        Zotero.log("Zotero Auto-Tagger: Startup complete", "info");
-        
-      } catch (e) {
-        Zotero.logError(e);
-        Zotero.log("Zotero Auto-Tagger: Startup failed - " + e.message, "error");
+        Zotero.debug("Auto-Tagger: Initialization complete");
       }
-    }
 
-    shutdown() {
-      if (this.ui) {
-        this.ui.shutdown();
-      }
-      this.initialized = false;
-      Zotero.log("Zotero Auto-Tagger: Shutdown complete", "info");
-    }
-
-    async tagSelectedItems() {
-      try {
-        const items = Zotero.getActiveZoteroPane().getSelectedItems();
-        if (!items || items.length === 0) {
-          alert("Please select at least one item to tag.");
-          return;
-        }
-        
-        let tagged = 0;
-        for (const item of items) {
-          const tags = await this.tagGenerator.generateTags(item);
-          if (tags && tags.length > 0) {
-            for (const tag of tags) {
-              item.addTag(tag);
-            }
-            await item.saveTx();
-            tagged++;
+      async tagSelectedItems() {
+        try {
+          const items = Zotero.getActiveZoteroPane().getSelectedItems();
+          if (!items || items.length === 0) {
+            alert(getString("autoTag.noItems"));
+            return;
           }
+          
+          // For now, just add test tags
+          let tagged = 0;
+          for (const item of items) {
+            if (item.isRegularItem()) {
+              item.addTag("auto-tagged");
+              item.addTag("test-tag");
+              await item.saveTx();
+              tagged++;
+            }
+          }
+          
+          alert(getString("autoTag.complete").replace("${count}", tagged));
+        } catch (e) {
+          Zotero.logError(e);
+          alert(getString("autoTag.error").replace("${error}", e.message));
         }
-        
-        alert(`Tagged ${tagged} of ${items.length} items.`);
-      } catch (e) {
-        Zotero.logError(e);
-        alert("Error tagging items: " + e.message);
       }
     }
-  };
+
+    // Initialize
+    Zotero.AutoTagger = new AutoTagger();
+    Zotero.AutoTagger.init();
+    
+    Zotero.debug("Auto-Tagger: Script completed");
+  } catch (e) {
+    Zotero.logError(e);
+    Zotero.debug("Auto-Tagger: Error in index.js - " + e.message);
+  }
 })();
