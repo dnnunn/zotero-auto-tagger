@@ -181,7 +181,8 @@ if (typeof Zotero !== 'undefined') {
       constructor() {
         this.baseURL = 'https://api.anthropic.com/v1/messages';
         this.apiKey = getPref('extensions.autoTagger.claudeApiKey');
-        this.model = 'claude-3-haiku-20240307'; // Using Haiku for cost efficiency
+        this.model = 'claude-3-haiku-20240307';
+        this.lastClaudeCall = 0; // Using Haiku for cost efficiency
       }
 
       async generateTags(item) {
@@ -207,6 +208,13 @@ if (typeof Zotero !== 'undefined') {
           const prompt = this.createPrompt(metadata);
 
           // Make API request
+          const now = Date.now();
+          if (this.lastClaudeCall && (now - this.lastClaudeCall) < 12000) {
+            const wait = 12000 - (now - this.lastClaudeCall);
+            Zotero.debug(`Auto-Tagger: Rate limit - waiting ${wait}ms`);
+            await new Promise(r => setTimeout(r, wait));
+          }
+          this.lastClaudeCall = Date.now();
           const response = await this.callClaudeAPI(prompt);
           
           // Parse response to extract tags
