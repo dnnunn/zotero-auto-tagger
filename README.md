@@ -30,7 +30,7 @@ Automatically generate keyword tags for your Zotero library items using AI and b
 
 ## 🔧 Installation
 
-1. Download the latest `.xpi` file: [zotero-auto-tagger-v0.2.1.xpi](https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.2.1/zotero-auto-tagger-v0.2.1.xpi)
+1. Download the latest `.xpi` file: [zotero-auto-tagger.xpi](https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.2.1/zotero-auto-tagger.xpi)
 2. In Zotero: Tools → Add-ons → Gear icon → Install Add-on From File
 3. Select the downloaded `.xpi` file
 4. Restart Zotero
