@@ -5,7 +5,6 @@
   "description": "Automatically tag Zotero items using PubMed and Claude AI",
   "homepage_url": "https://github.com/dnnunn/zotero-auto-tagger",
   "author": "David Nunn",
-  "id": "zotero-auto-tagger@dnnunn.github.io",
   "icons": {
     "16": "chrome/content/icons/icon-16.png",
     "32": "chrome/content/icons/icon-32.png",
@@ -14,7 +13,7 @@
   },
   "applications": {
     "zotero": {
-      "id": "zotero@chnm.gmu.edu",
+      "id": "zotero-auto-tagger@dnnunn.github.io",
       "strict_min_version": "7.0",
       "strict_max_version": "7.*",
       "update_url": "https://raw.githubusercontent.com/dnnunn/zotero-auto-tagger/main/update.json"

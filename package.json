@@ -26,11 +26,15 @@
   ],
   "scripts": {
     "build": "node scripts/build.js",
-    "clean": "rm -rf build",
-    "release": "npm run clean && npm run build && cd build && zip -r ../zotero-auto-tagger.xpi * -x '*.DS_Store' && cd .."
+    "package": "node scripts/package.js",
+    "all": "npm run clean && npm run build && npm run package",
+    "clean": "rm -rf build"
   },
   "devDependencies": {
-    "fs-extra": "^11.2.0"
+    "archiver": "^7.0.1",
+    "esbuild": "^0.25.5",
+    "fs-extra": "^11.2.0",
+    "replace-in-file": "^8.3.0"
   },
   "engines": {
     "node": ">=14.0.0"
