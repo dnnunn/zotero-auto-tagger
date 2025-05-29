@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Zotero](https://img.shields.io/badge/Zotero-7+-red.svg)](https://www.zotero.org/)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/dnnunn/zotero-auto-tagger/releases)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/dnnunn/zotero-auto-tagger/releases)
 
 Automatically generate keyword tags for your Zotero library items using AI and biomedical databases. Perfect for researchers who want to organize their references efficiently.
 
@@ -15,12 +15,12 @@ Automatically generate keyword tags for your Zotero library items using AI and b
 - **💰 Cost Efficient**: Uses Claude 3 Haiku model for minimal API costs
 - **🎯 Smart Prioritization**: Tries PubMed first for items with DOI/PMID, falls back to AI when needed
 
-## 🚀 What's New in v0.2.0
+## 🚀 What's New in v0.2.1
 
-- **Claude AI Integration**: Now supports tagging for ALL content types, not just biomedical
-- **Improved Error Handling**: Clear feedback on which items were tagged by which service
-- **Bug Fixes**: Resolved compatibility issues with Zotero 7 environment
-- **Professional UI**: Added custom icon for better visual integration
+- **Fixed Claude API Rate Limiting**: No more 429 errors when batch processing items
+- **Automatic Request Throttling**: Implements 12-second delays between Claude API calls
+- **Debug Logging**: See when rate limiting is active in debug output
+- **Improved Reliability**: Smooth batch processing without interruptions
 
 ## 📋 Requirements
 
@@ -30,7 +30,7 @@ Automatically generate keyword tags for your Zotero library items using AI and b
 
 ## 🔧 Installation
 
-1. Download the latest `.xpi` file: [zotero-auto-tagger-v0.2.0.xpi](https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.2.0/zotero-auto-tagger-v0.2.0.xpi)
+1. Download the latest `.xpi` file: [zotero-auto-tagger.xpi](https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.2.1/zotero-auto-tagger.xpi)
 2. In Zotero: Tools → Add-ons → Gear icon → Install Add-on From File
 3. Select the downloaded `.xpi` file
 4. Restart Zotero
