@@ -2,6 +2,7 @@ const esbuild = require('esbuild');
 const fs = require('fs-extra');
 const path = require('path');
 const { replaceInFile } = require('replace-in-file');
+const packageJson = require('../package.json');
 
 // Define project root
 const projectRoot = path.join(__dirname, '..');
@@ -13,7 +14,7 @@ const config = {
   addonID: "zotero-auto-tagger@dnnunn.github.io",
   addonName: "Zotero Auto-Tagger",
   addonRef: "autoTagger",
-  version: "0.2.0",
+  version: packageJson.version,
   description: "Automatically generate and add tags to references",
   author: "dnnunn",
   homepage: "https://github.com/dnnunn/zotero-auto-tagger",

@@ -1,6 +1,6 @@
 {
   "name": "zotero-auto-tagger",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "AI-powered auto-tagging for Zotero. Automatically generates keyword tags using PubMed MeSH terms for biomedical content and Claude AI for everything else.",
   "author": "David Nunn",
   "license": "MIT",
