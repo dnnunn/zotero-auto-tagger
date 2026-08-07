@@ -181,8 +181,15 @@ if (typeof Zotero !== 'undefined') {
       constructor() {
         this.baseURL = 'https://api.anthropic.com/v1/messages';
         this.apiKey = getPref('extensions.autoTagger.claudeApiKey');
-        this.model = 'claude-3-haiku-20240307';
-        this.lastClaudeCall = 0; // Using Haiku for cost efficiency
+        // Model is user-configurable. claude-haiku-4-5 is the cheapest current
+        // option for high-volume tagging; claude-sonnet-5 / claude-opus-5 give
+        // better topic judgement on sparse abstracts at higher cost.
+        this.model = getPref('extensions.autoTagger.claudeModel') || 'claude-opus-5';
+        // Minimum gap between Claude calls, ms. The old hardcoded 12000 capped
+        // throughput at 5 items/min (~22h for a 6.5k-item collection).
+        const gap = parseInt(getPref('extensions.autoTagger.claudeMinGapMs'), 10);
+        this.minGapMs = Number.isFinite(gap) ? gap : 1200;
+        this.lastClaudeCall = 0;
       }
 
       async generateTags(item) {
@@ -209,8 +216,8 @@ if (typeof Zotero !== 'undefined') {
 
           // Make API request
           const now = Date.now();
-          if (this.lastClaudeCall && (now - this.lastClaudeCall) < 12000) {
-            const wait = 12000 - (now - this.lastClaudeCall);
+          if (this.lastClaudeCall && (now - this.lastClaudeCall) < this.minGapMs) {
+            const wait = this.minGapMs - (now - this.lastClaudeCall);
             Zotero.debug(`Auto-Tagger: Rate limit - waiting ${wait}ms`);
             await new Promise(r => setTimeout(r, wait));
           }
@@ -261,7 +268,8 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
 
         const body = JSON.stringify({
           model: this.model,
-          max_tokens: 200,
+          // 200 was tight for 10 keywords and truncated mid-tag on verbose items.
+          max_tokens: 1024,
           messages: [
             {
               role: 'user',
@@ -361,18 +369,19 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
               const pmid = item.getField('extra')?.match(/PMID:\s*(\d+)/)?.[1];
               
               let keywords = [];
-              
+              let aiKeywords = [];
+
               // Try PubMed first if DOI or PMID exists
               if (doi || pmid) {
                 keywords = await this.pubmedAPI.getKeywords(doi, pmid);
               }
-              
+
               // If no keywords from PubMed, try Claude
               if (keywords.length === 0) {
                 Zotero.debug(`Auto-Tagger: No PubMed keywords for item ${item.id}, trying Claude...`);
                 try {
-                  keywords = await this.claudeAPI.generateTags(item);
-                  if (keywords.length > 0) {
+                  aiKeywords = await this.claudeAPI.generateTags(item);
+                  if (aiKeywords.length > 0) {
                     taggedByClaude++;
                   }
                 } catch (claudeError) {
@@ -380,16 +389,24 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
                   throw claudeError;
                 }
               }
-              
-              if (keywords.length === 0) {
+
+              if (keywords.length === 0 && aiKeywords.length === 0) {
                 Zotero.debug(`Auto-Tagger: No keywords found for item ${item.id}`);
                 errors++;
                 continue;
               }
-              
+
+              // Namespace AI-generated tags so they stay distinguishable from
+              // PubMed MeSH / author keywords. Without this the two sources
+              // merge into one flat vocabulary and provenance is unrecoverable.
+              const aiPrefix = getPref('extensions.autoTagger.aiTagPrefix') ?? 'ai: ';
+
               await Zotero.DB.executeTransaction(async function () {
                 for (const keyword of keywords) {
                   item.addTag(keyword, 0);
+                }
+                for (const keyword of aiKeywords) {
+                  item.addTag(`${aiPrefix}${keyword}`, 1);
                 }
                 await item.save();
               });
