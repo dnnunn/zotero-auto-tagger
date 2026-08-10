@@ -324,15 +324,61 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
           }
           
           Zotero.debug(`Auto-Tagger: Processing ${regularItems.length} items`);
-          
+
+          // A library-wide pass runs for tens of hours. Without a visible
+          // counter there is no way to know how far it got before you close
+          // Zotero, and no way to stop it short of quitting the app.
+          if (this._running) {
+            this._cancelRequested = true;
+            showMessage("Auto-Tagger: stop requested. Finishing the current item...");
+            return;
+          }
+          this._running = true;
+          this._cancelRequested = false;
+
+          const started = Date.now();
+          const progressWin = new Zotero.ProgressWindow({ closeOnClick: false });
+          progressWin.changeHeadline(`Auto-Tagging ${regularItems.length} items`);
+          const bar = new progressWin.ItemProgress('', 'Starting...');
+          progressWin.show();
+
           let tagged = 0;
           let taggedByLLM = 0;
           let skipped = 0;
           let errors = 0;
           let errorMessages = [];
-          
+
+          // Persisted so "how far did it get?" is answerable after the window
+          // is gone. Read it back from the Config Editor.
+          const saveProgress = (i) => {
+            try {
+              Services.prefs.setCharPref('extensions.autoTagger.lastRun',
+                `${new Date().toISOString().slice(0,16).replace('T',' ')} | ` +
+                `${i}/${regularItems.length} processed | ${tagged} tagged, ` +
+                `${skipped} skipped, ${errors} errors`);
+            } catch (e) { /* non-fatal */ }
+          };
+
           for (let i = 0; i < regularItems.length; i++) {
+            if (this._cancelRequested) {
+              Zotero.debug('Auto-Tagger: cancelled by user');
+              break;
+            }
             const item = regularItems[i];
+
+            // Update before the slow work so the count reflects what is
+            // actually in flight, not what finished.
+            const pct = Math.round((i / regularItems.length) * 100);
+            const elapsed = (Date.now() - started) / 1000;
+            const rate = i > 0 ? elapsed / i : 0;
+            const etaMin = rate > 0 ? Math.round((rate * (regularItems.length - i)) / 60) : 0;
+            bar.setProgress(Math.max(pct, 1));
+            bar.setText(
+              `${i + 1}/${regularItems.length} — ${tagged} tagged, ${skipped} skipped` +
+              (errors ? `, ${errors} errors` : '') +
+              (etaMin ? ` — ~${etaMin} min left` : '')
+            );
+            if (i % 10 === 0) saveProgress(i);
             const progress = getString("autoTag.processing")
               .replace("${current}", i + 1)
               .replace("${total}", regularItems.length);
@@ -437,7 +483,25 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
             }
           }
           
+          this._running = false;
+          const wasCancelled = this._cancelRequested;
+          this._cancelRequested = false;
+          saveProgress(tagged + skipped + errors);
+
+          const mins = Math.round((Date.now() - started) / 60000);
+          bar.setProgress(100);
+          bar.setText(
+            (wasCancelled ? 'Stopped — ' : 'Done — ') +
+            `${tagged} tagged, ${skipped} skipped` + (errors ? `, ${errors} errors` : '') +
+            (mins ? ` in ${mins} min` : '')
+          );
+          progressWin.startCloseTimer(8000);
+
           let message = getString("autoTag.complete").replace("${count}", tagged);
+          if (wasCancelled) {
+            message = `Stopped early.\n${tagged} items tagged before stopping.`;
+          }
+          message += `\n\nRe-running is safe — already-tagged items are skipped.`;
           if (taggedByLLM > 0) {
             message += `\n${taggedByLLM} items tagged using the local model.`;
             if (skipped) message += `\n${skipped} already tagged, skipped.`;
@@ -449,8 +513,14 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
             }
           }
           showMessage(message);
-          
+
         } catch (e) {
+          // Release the run lock here too. Without this an exception leaves
+          // _running true forever and every later click is interpreted as a
+          // stop request, wedging the plugin until Zotero restarts.
+          this._running = false;
+          this._cancelRequested = false;
+          try { if (typeof progressWin !== 'undefined' && progressWin) progressWin.close(); } catch (_) {}
           Zotero.logError(e);
           showMessage(getString("autoTag.error").replace("${error}", e.message));
         }
