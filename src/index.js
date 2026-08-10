@@ -402,7 +402,19 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
               // merge into one flat vocabulary and provenance is unrecoverable.
               const aiPrefix = getPref('extensions.autoTagger.aiTagPrefix') ?? 'ai: ';
 
+              // When re-tagging, replace rather than accumulate: strip the
+              // previous run's LLM tags first, so switching models or editing
+              // the prompt doesn't leave both generations layered on the item.
+              // Only prefixed tags are touched — PubMed MeSH is never removed.
+              const replacing = !!getPref('extensions.autoTagger.retagExisting');
+              const stale = replacing
+                ? item.getTags().map(t => t.tag).filter(t => t && t.startsWith(aiPrefix))
+                : [];
+
               await Zotero.DB.executeTransaction(async function () {
+                for (const old of stale) {
+                  item.removeTag(old);
+                }
                 for (const keyword of keywords) {
                   item.addTag(keyword, 0);
                 }
@@ -411,6 +423,9 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
                 }
                 await item.save();
               });
+              if (stale.length) {
+                Zotero.debug(`Auto-Tagger: replaced ${stale.length} prior LLM tags on item ${item.id}`);
+              }
               
               tagged++;
               Zotero.debug(`Auto-Tagger: Tagged item ${item.id} with ${keywords.length} keywords`);
