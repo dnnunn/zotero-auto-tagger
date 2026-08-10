@@ -22,9 +22,9 @@ if (typeof Zotero !== 'undefined') {
         "autoTag.complete": "Tagged ${count} items",
         "autoTag.error": "Error tagging items: ${error}",
         "autoTag.processing": "Processing ${current} of ${total} items...",
-        "autoTag.usingClaude": "Using Claude AI for item without PubMed data...",
-        "autoTag.noApiKey": "No Claude API key configured. Please set it in Zotero preferences.",
-        "autoTag.claudeError": "Claude API error: ${error}"
+        "autoTag.usingLLM": "Using local model for item without PubMed data...",
+        "autoTag.ollamaUnreachable": "Cannot reach Ollama. Is it running? (ollama serve)",
+        "autoTag.llmError": "Local model error: ${error}"
       };
       return strings[key] || key;
     }
@@ -177,72 +177,39 @@ if (typeof Zotero !== 'undefined') {
       }
     }
 
-    class ClaudeAPI {
+    // Local LLM tagging via Ollama. No API key, no per-token cost, no data
+    // leaving the machine. Requires Ollama running with the configured model
+    // pulled (`ollama pull qwen3:8b`).
+    class OllamaAPI {
       constructor() {
-        this.baseURL = 'https://api.anthropic.com/v1/messages';
-        this.apiKey = getPref('extensions.autoTagger.claudeApiKey');
-        // Model is user-configurable. claude-haiku-4-5 is the cheapest current
-        // option for high-volume tagging; claude-sonnet-5 / claude-opus-5 give
-        // better topic judgement on sparse abstracts at higher cost.
-        this.model = getPref('extensions.autoTagger.claudeModel') || 'claude-opus-5';
-        // Minimum gap between Claude calls, ms. The old hardcoded 12000 capped
-        // throughput at 5 items/min (~22h for a 6.5k-item collection).
-        const gap = parseInt(getPref('extensions.autoTagger.claudeMinGapMs'), 10);
-        this.minGapMs = Number.isFinite(gap) ? gap : 1200;
-        this.lastClaudeCall = 0;
+        this.baseURL = (getPref('extensions.autoTagger.ollamaUrl')
+                        || 'http://localhost:11434').replace(/\/$/, '');
+        this.model = getPref('extensions.autoTagger.ollamaModel') || 'qwen3:8b';
       }
 
       async generateTags(item) {
-        if (!this.apiKey) {
-          Zotero.debug('Auto-Tagger: No Claude API key configured');
-          throw new Error(getString("autoTag.noApiKey"));
-        }
+        const metadata = {
+          title: item.getField('title') || '',
+          abstract: item.getField('abstractNote') || '',
+          authors: this.getAuthors(item),
+          publicationTitle: item.getField('publicationTitle') || '',
+          date: item.getField('date') || '',
+          itemType: item.itemType
+        };
 
-        try {
-          // Gather item metadata
-          const metadata = {
-            title: item.getField('title') || '',
-            abstract: item.getField('abstractNote') || '',
-            authors: this.getAuthors(item),
-            publicationTitle: item.getField('publicationTitle') || '',
-            date: item.getField('date') || '',
-            itemType: item.itemType
-          };
-
-          Zotero.debug(`Auto-Tagger: Claude metadata: ${JSON.stringify(metadata)}`);
-
-          // Create prompt
-          const prompt = this.createPrompt(metadata);
-
-          // Make API request
-          const now = Date.now();
-          if (this.lastClaudeCall && (now - this.lastClaudeCall) < this.minGapMs) {
-            const wait = this.minGapMs - (now - this.lastClaudeCall);
-            Zotero.debug(`Auto-Tagger: Rate limit - waiting ${wait}ms`);
-            await new Promise(r => setTimeout(r, wait));
-          }
-          this.lastClaudeCall = Date.now();
-          const response = await this.callClaudeAPI(prompt);
-          
-          // Parse response to extract tags
-          return this.parseTagsFromResponse(response);
-        } catch (error) {
-          Zotero.logError(error);
-          Zotero.debug(`Auto-Tagger: Claude API error - ${error.message}`);
-          throw error;
-        }
+        const response = await this.callOllama(this.createPrompt(metadata));
+        return this.parseTagsFromResponse(response);
       }
 
       getAuthors(item) {
-        const creators = item.getCreators();
-        return creators
-          .filter(creator => creator.creatorType === 'author')
-          .map(creator => `${creator.firstName} ${creator.lastName}`.trim())
+        return item.getCreators()
+          .filter(c => c.creatorType === 'author')
+          .map(c => `${c.firstName} ${c.lastName}`.trim())
           .join(', ');
       }
 
       createPrompt(metadata) {
-        return `Please analyze the following academic item and generate relevant keyword tags for categorization in a reference manager. Generate 5-10 specific, relevant keywords that would help someone find this item when searching their library.
+        return `Generate 5-10 keyword tags for this reference, for retrieval in a reference manager.
 
 Title: ${metadata.title}
 Authors: ${metadata.authors}
@@ -251,65 +218,59 @@ Publication: ${metadata.publicationTitle}
 Date: ${metadata.date}
 Type: ${metadata.itemType}
 
-Please respond with ONLY the keywords, one per line, without any explanation or additional text. Focus on:
-- Main topics and themes
-- Methodologies mentioned
-- Key concepts
-- Subject areas
-- Important terms from the title and abstract`;
+Cover main topics, methodologies, key concepts, and subject areas.
+Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
       }
 
-      async callClaudeAPI(prompt) {
-        const headers = {
-          'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
-          'anthropic-version': '2023-06-01'
-        };
-
+      async callOllama(prompt) {
         const body = JSON.stringify({
           model: this.model,
-          // 200 was tight for 10 keywords and truncated mid-tag on verbose items.
-          max_tokens: 1024,
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ]
+          prompt: prompt,
+          stream: false,
+          // Qwen3 and other reasoning models emit <think> blocks by default.
+          // Ask for them off; parseTagsFromResponse strips them regardless,
+          // since older Ollama builds ignore this field.
+          think: false,
+          options: { temperature: 0.2, num_predict: 512 }
         });
 
-        Zotero.debug(`Auto-Tagger: Calling Claude API with model ${this.model}`);
+        Zotero.debug(`Auto-Tagger: Calling Ollama (${this.model}) at ${this.baseURL}`);
 
-        const response = await Zotero.HTTP.request('POST', this.baseURL, {
-          headers: headers,
-          body: body
-        });
+        let response;
+        try {
+          response = await Zotero.HTTP.request('POST', `${this.baseURL}/api/generate`, {
+            headers: { 'Content-Type': 'application/json' },
+            body: body
+          });
+        } catch (e) {
+          throw new Error(getString("autoTag.ollamaUnreachable"));
+        }
 
         if (response.status !== 200) {
-          Zotero.debug(`Auto-Tagger: Claude API error response: ${response.responseText}`);
-          throw new Error(`Claude API error: ${response.status} - ${response.responseText}`);
+          Zotero.debug(`Auto-Tagger: Ollama error: ${response.responseText}`);
+          throw new Error(`Ollama error: ${response.status} - ${response.responseText}`);
         }
 
         return JSON.parse(response.responseText);
       }
 
       parseTagsFromResponse(response) {
-        try {
-          const content = response.content[0].text;
-          Zotero.debug(`Auto-Tagger: Claude response: ${content}`);
-          
-          const tags = content
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && line.length < 100) // Basic validation
-            .slice(0, 10); // Limit to 10 tags
-          
-          Zotero.debug(`Auto-Tagger: Parsed ${tags.length} tags from Claude`);
-          return tags;
-        } catch (error) {
-          Zotero.debug('Auto-Tagger: Error parsing Claude response');
-          throw error;
-        }
+        let content = response.response || '';
+        // Strip reasoning blocks before parsing, or the model's chain of
+        // thought ends up as tags.
+        content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+        const tags = content
+          .split('\n')
+          .map(line => line.trim())
+          // Drop list markers and numbering the model may add despite the prompt
+          .map(line => line.replace(/^[-*\u2022]\s*/, '').replace(/^\d+[.)]\s*/, '').trim())
+          .filter(line => line.length > 0 && line.length < 100)
+          .filter(line => !line.endsWith(':'))   // drop headings like "Keywords:"
+          .slice(0, 10);
+
+        Zotero.debug(`Auto-Tagger: Parsed ${tags.length} tags from Ollama`);
+        return tags;
       }
     }
 
@@ -317,17 +278,30 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
       constructor() {
         this.initialized = false;
         this.pubmedAPI = null;
-        this.claudeAPI = null;
+        this.ollamaAPI = null;
         Zotero.debug("Auto-Tagger: AutoTagger instance created");
       }
 
       async init() {
         if (this.initialized) return;
-        
+
         Zotero.debug("Auto-Tagger: Initializing");
-        
+
+        // v0.3.0 migration: earlier versions stored an Anthropic API key in
+        // plaintext in prefs.js. Tagging is local now, so the key is not just
+        // unused but a liability sitting in a file that gets copied into
+        // profile backups. Clear it on first run.
+        for (const stale of ['claudeApiKey', 'claudeModel', 'claudeMinGapMs']) {
+          try {
+            if (getPref(`extensions.autoTagger.${stale}`) !== undefined) {
+              Zotero.Prefs.clear(`extensions.autoTagger.${stale}`, true);
+              Zotero.debug(`Auto-Tagger: cleared stale pref ${stale}`);
+            }
+          } catch (e) { /* pref absent or already cleared */ }
+        }
+
         this.pubmedAPI = new PubMedAPI();
-        this.claudeAPI = new ClaudeAPI();
+        this.ollamaAPI = new OllamaAPI();
         
         registerMenus();
         
@@ -352,7 +326,7 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
           Zotero.debug(`Auto-Tagger: Processing ${regularItems.length} items`);
           
           let tagged = 0;
-          let taggedByClaude = 0;
+          let taggedByLLM = 0;
           let errors = 0;
           let errorMessages = [];
           
@@ -376,17 +350,17 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
                 keywords = await this.pubmedAPI.getKeywords(doi, pmid);
               }
 
-              // If no keywords from PubMed, try Claude
+              // If no keywords from PubMed, try the local model
               if (keywords.length === 0) {
-                Zotero.debug(`Auto-Tagger: No PubMed keywords for item ${item.id}, trying Claude...`);
+                Zotero.debug(`Auto-Tagger: No PubMed keywords for item ${item.id}, trying Ollama...`);
                 try {
-                  aiKeywords = await this.claudeAPI.generateTags(item);
+                  aiKeywords = await this.ollamaAPI.generateTags(item);
                   if (aiKeywords.length > 0) {
-                    taggedByClaude++;
+                    taggedByLLM++;
                   }
-                } catch (claudeError) {
-                  errorMessages.push(`Item "${item.getField('title')}": ${claudeError.message}`);
-                  throw claudeError;
+                } catch (llmError) {
+                  errorMessages.push(`Item "${item.getField('title')}": ${llmError.message}`);
+                  throw llmError;
                 }
               }
 
@@ -422,8 +396,8 @@ Please respond with ONLY the keywords, one per line, without any explanation or 
           }
           
           let message = getString("autoTag.complete").replace("${count}", tagged);
-          if (taggedByClaude > 0) {
-            message += `\n${taggedByClaude} items tagged using Claude AI.`;
+          if (taggedByLLM > 0) {
+            message += `\n${taggedByLLM} items tagged using the local model.`;
           }
           if (errors > 0) {
             message += `\n${errors} items failed to process.`;
