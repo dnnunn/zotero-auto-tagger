@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-10
+
+### Changed - BREAKING
+- Tagging is now **local via Ollama**. The Claude/Anthropic API integration has been removed entirely.
+- No API key is required. Nothing is sent to a third party.
+- LLM-generated tags are namespaced with a configurable prefix (default `ai: `) and stored as
+  automatic tags, so they no longer merge into the PubMed MeSH vocabulary.
+
+### Added
+- `extensions.autoTagger.ollamaUrl` (default `http://localhost:11434`)
+- `extensions.autoTagger.ollamaModel` (default `qwen3:8b`)
+- `extensions.autoTagger.aiTagPrefix` (default `ai: `)
+- Reasoning-model support: `<think>` blocks are stripped before tags are parsed.
+
+### Removed
+- Anthropic API client, key storage, and the 12-second request throttle it required.
+- ~2,300 lines of duplicated dead code across three parallel module trees.
+  Packaged extension: 17 files -> 9.
+
+### Migration
+- Previously stored `claudeApiKey`, `claudeModel`, and `claudeMinGapMs` preferences are
+  cleared automatically on first run.
+
+
 ## [0.2.0] - 2025-05-26
 
 ### Added
