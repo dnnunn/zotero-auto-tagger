@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Zotero Auto-Tagger",
-  "version": "0.2.2",
-  "description": "Automatically tag Zotero items using PubMed and Claude AI",
+  "version": "__version__",
+  "description": "Automatically tag Zotero items using PubMed and a local LLM (Ollama)",
   "homepage_url": "https://github.com/dnnunn/zotero-auto-tagger",
   "author": "David Nunn",
   "icons": {

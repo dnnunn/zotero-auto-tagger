@@ -15,7 +15,7 @@ const config = {
   addonName: "Zotero Auto-Tagger",
   addonRef: "autoTagger",
   version: packageJson.version,
-  description: "Automatically generate and add tags to references",
+  description: "Automatically tag Zotero items using PubMed and a local LLM (Ollama)",
   author: "dnnunn",
   homepage: "https://github.com/dnnunn/zotero-auto-tagger",
   updateURL: "https://raw.githubusercontent.com/dnnunn/zotero-auto-tagger/main/update.json"

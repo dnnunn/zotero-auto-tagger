@@ -1,7 +1,7 @@
 {
   "name": "zotero-auto-tagger",
   "version": "0.3.0",
-  "description": "AI-powered auto-tagging for Zotero. Automatically generates keyword tags using PubMed MeSH terms for biomedical content and Claude AI for everything else.",
+  "description": "Auto-tagging for Zotero. Generates keyword tags from PubMed MeSH terms for biomedical content and a local LLM via Ollama for everything else. No API key required.",
   "author": "David Nunn",
   "license": "MIT",
   "homepage": "https://github.com/dnnunn/zotero-auto-tagger",
@@ -19,10 +19,11 @@
     "auto-tagging",
     "pubmed",
     "mesh-terms",
-    "claude-ai",
     "artificial-intelligence",
     "research-tools",
-    "bibliography"
+    "bibliography",
+    "ollama",
+    "local-llm"
   ],
   "scripts": {
     "build": "node scripts/build.js",
