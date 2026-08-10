@@ -327,6 +327,7 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
           
           let tagged = 0;
           let taggedByLLM = 0;
+          let skipped = 0;
           let errors = 0;
           let errorMessages = [];
           
@@ -339,9 +340,25 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
             Zotero.debug(`Auto-Tagger: ${progress}`);
             
             try {
+              const aiPrefixCheck = getPref('extensions.autoTagger.aiTagPrefix') ?? 'ai: ';
+
+              // Resumability. A library-wide pass is measured in tens of hours;
+              // without this, any interruption means starting over and
+              // re-paying the inference cost for work already done. Skip items
+              // that already carry an LLM tag unless explicitly re-tagging.
+              if (!getPref('extensions.autoTagger.retagExisting')) {
+                const already = item.getTags()
+                  .some(t => t.tag && t.tag.startsWith(aiPrefixCheck));
+                if (already) {
+                  Zotero.debug(`Auto-Tagger: item ${item.id} already LLM-tagged, skipping`);
+                  skipped++;
+                  continue;
+                }
+              }
+
               const doi = item.getField('DOI');
               const pmid = item.getField('extra')?.match(/PMID:\s*(\d+)/)?.[1];
-              
+
               let keywords = [];
               let aiKeywords = [];
 
@@ -350,17 +367,27 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
                 keywords = await this.pubmedAPI.getKeywords(doi, pmid);
               }
 
-              // If no keywords from PubMed, try the local model
-              if (keywords.length === 0) {
-                Zotero.debug(`Auto-Tagger: No PubMed keywords for item ${item.id}, trying Ollama...`);
+              // Source policy. Default 'both': MeSH gives controlled vocabulary,
+              // the LLM adds the specific concepts MeSH lacks, and the two are
+              // namespaced so they never merge. 'fallback' is the pre-0.4.0
+              // behaviour — LLM only when PubMed returns nothing.
+              const llmMode = getPref('extensions.autoTagger.llmMode') || 'both';
+              const runLLM = llmMode === 'both'
+                          || (llmMode === 'fallback' && keywords.length === 0);
+
+              if (runLLM) {
+                Zotero.debug(`Auto-Tagger: running Ollama for item ${item.id} (mode=${llmMode}, pubmed=${keywords.length})`);
                 try {
                   aiKeywords = await this.ollamaAPI.generateTags(item);
                   if (aiKeywords.length > 0) {
                     taggedByLLM++;
                   }
                 } catch (llmError) {
+                  // Do not abort the whole run because one item failed. A
+                  // library-wide pass is long; losing it to a single transient
+                  // Ollama hiccup is worse than skipping the item.
                   errorMessages.push(`Item "${item.getField('title')}": ${llmError.message}`);
-                  throw llmError;
+                  Zotero.debug(`Auto-Tagger: LLM failed for item ${item.id}, continuing`);
                 }
               }
 
@@ -398,6 +425,7 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
           let message = getString("autoTag.complete").replace("${count}", tagged);
           if (taggedByLLM > 0) {
             message += `\n${taggedByLLM} items tagged using the local model.`;
+            if (skipped) message += `\n${skipped} already tagged, skipped.`;
           }
           if (errors > 0) {
             message += `\n${errors} items failed to process.`;
