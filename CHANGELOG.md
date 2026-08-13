@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `scripts/release.js` produced an unloadable plugin and was the cause of the release-versus-code
+  version drift. It hardcoded `0.1.0` in the XPI name; it archived `build/` rather than
+  `build/addon/`, so `manifest.json` landed one directory below the archive root and any
+  previously-built XPI in `build/xpi/` was bundled into the new one; and it "waited" for the build
+  with a 2-second sleep, because `require`-ing `build.js` returns nothing to await.
+
+  It now cleans, then delegates to `build.js` and `package.js`, which already read the version from
+  `package.json` and write the correct layout. Verified to produce an archive whose contents are
+  identical to the published v0.7.0 XPI.
+
+### Added
+- `npm run release` as the entry point for a full clean-build-package run.
+
+(Build tooling only — the shipped plugin is unchanged.)
+
+
 ## [0.7.0] - 2026-08-13
 
 ### Added

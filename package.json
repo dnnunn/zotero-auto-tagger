@@ -28,6 +28,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "package": "node scripts/package.js",
+    "release": "node scripts/release.js",
     "all": "npm run clean && npm run build && npm run package",
     "clean": "rm -rf build"
   },
