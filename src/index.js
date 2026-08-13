@@ -260,17 +260,67 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
         // thought ends up as tags.
         content = content.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-        const tags = content
+        const raw = content
           .split('\n')
           .map(line => line.trim())
           // Drop list markers and numbering the model may add despite the prompt
           .map(line => line.replace(/^[-*\u2022]\s*/, '').replace(/^\d+[.)]\s*/, '').trim())
           .filter(line => line.length > 0 && line.length < 100)
-          .filter(line => !line.endsWith(':'))   // drop headings like "Keywords:"
-          .slice(0, 10);
+          .filter(line => !line.endsWith(':'));  // drop headings like "Keywords:"
+
+        // Case-normalise, then de-duplicate within the item.
+        //
+        // Without this the vocabulary fragments badly: a 3,159-item run produced
+        // 15,196 distinct tags that collapsed to 12,801 on lowercasing alone,
+        // with 1,936 concepts split across case variants \u2014 OSTEOPONTIN /
+        // Osteopontin / osteopontin appearing as three separate tags across
+        // 2,615 items. That makes tag filtering silently lossy, and makes the
+        // tags unusable as graph nodes downstream.
+        const seen = new Set();
+        const tags = [];
+        for (const t of raw) {
+          const n = this.normaliseTag(t);
+          const k = n.toLowerCase();
+          if (n && !seen.has(k)) { seen.add(k); tags.push(n); }
+          if (tags.length >= 10) break;
+        }
 
         Zotero.debug(`Auto-Tagger: Parsed ${tags.length} tags from Ollama`);
         return tags;
+      }
+
+      // Canonical form: sentence case, with acronyms preserved.
+      //   OSTEOPONTIN     -> Osteopontin
+      //   gene expression -> Gene expression
+      //   Gene Expression -> Gene expression
+      //   ELISA / CD44    -> unchanged (short all-caps, or contains digits)
+      // Deliberately does NOT stem plurals: the plugin sees one item at a time
+      // and has no library-wide view, so singular/plural merging cannot be done
+      // safely here. That needs a separate library-wide pass.
+      normaliseTag(tag) {
+        const t = tag.replace(/\s+/g, ' ').trim();
+        if (!t) return '';
+        // Distinguish a scientific token that must keep its casing (mRNA, CD44,
+        // TGF-beta, RNA-seq, ELISA, IL-6) from a word that is merely SHOUTED
+        // (OSTEOPONTIN, INFLAMMATION). Both are "uppercase", so length and the
+        // presence of digits/mixed case are what separate them.
+        const keepCase = (w) => {
+          const letters = w.replace(/[^A-Za-z]/g, '');
+          const allCaps = letters.length > 0 && letters === letters.toUpperCase();
+          // A long all-caps run with no digits is shouting, not an acronym.
+          if (allCaps && !/\d/.test(w) && letters.length > 6) return false;
+          // 2+ caps run (ELISA, mRNA, TGF-beta), caps+digit (CD44, IL-6),
+          // or internal capital i.e. CamelCase (AlphaFold, pH).
+          return /[A-Z]{2,}/.test(w) || (/[A-Z]/.test(w) && /\d/.test(w)) || /[a-z][A-Z]/.test(w);
+        };
+        const words = t.split(' ').map(w => (keepCase(w) ? w : w.toLowerCase()));
+        // Only capitalise a Latin initial. Upper-casing a Greek or other
+        // non-Latin initial (αv -> Αv) invents a new variant instead of
+        // collapsing one.
+        if (words.length && !keepCase(words[0]) && /^[a-z]/.test(words[0])) {
+          words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+        }
+        return words.join(' ');
       }
     }
 
