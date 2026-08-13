@@ -177,6 +177,31 @@ if (typeof Zotero !== 'undefined') {
       }
     }
 
+    // Controlled facet vocabulary, emitted alongside the free-text topical tags
+    // as `key:value` pairs.
+    //
+    // These four exist because free-text topical tags cannot express the things
+    // that decide whether a paper actually supports a claim. A worked example:
+    // McClanahan 2025 (milk osteopontin / gut IELs) reads as supporting evidence
+    // from its abstract, but is a knockout-deprivation design — it shows that
+    // REMOVING osteopontin changes the gut, not that adding it helps. Topical
+    // tags cannot distinguish that from a supplementation trial; `exposure:` can.
+    // Likewise `lifestage:`, which separates neonatal-model evidence from the
+    // adult claims it is being used to support.
+    //
+    // Values are enforced in code, not merely requested in the prompt: a local
+    // 8B model will occasionally invent one, and a hallucinated facet is worse
+    // than a missing one because it looks like signal downstream.
+    const FACET_VOCAB = {
+      design:      ['in-vitro', 'organoid', 'ex-vivo', 'animal-invivo',
+                    'human-trial', 'observational', 'review', 'meta-analysis'],
+      exposure:    ['supplementation', 'deprivation', 'knockout',
+                    'association', 'none'],
+      lifestage:   ['neonatal', 'infant', 'juvenile', 'adult', 'aged', 'mixed'],
+      testarticle: ['bovine', 'human', 'recombinant', 'milk-derived',
+                    'peptide', 'synthetic', 'not-stated']
+    };
+
     // Local LLM tagging via Ollama. No API key, no per-token cost, no data
     // leaving the machine. Requires Ollama running with the configured model
     // pulled (`ollama pull qwen3:8b`).
@@ -209,7 +234,11 @@ if (typeof Zotero !== 'undefined') {
       }
 
       createPrompt(metadata) {
-        return `Generate 5-10 keyword tags for this reference, for retrieval in a reference manager.
+        const facetSpec = Object.entries(FACET_VOCAB)
+          .map(([key, values]) => `${key}:  one of  ${values.join(', ')}`)
+          .join('\n');
+
+        return `Generate tags for this reference, for retrieval in a reference manager.
 
 Title: ${metadata.title}
 Authors: ${metadata.authors}
@@ -218,8 +247,26 @@ Publication: ${metadata.publicationTitle}
 Date: ${metadata.date}
 Type: ${metadata.itemType}
 
-Cover main topics, methodologies, key concepts, and subject areas.
-Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
+Respond with two kinds of line, and nothing else. No headings, no numbering,
+no explanation.
+
+FIRST: 5-10 topical keywords, one per line, covering main topics,
+methodologies, key concepts and subject areas.
+
+THEN: study-characteristic facets, one per line, in the exact form key:value,
+using ONLY these keys and values:
+
+${facetSpec}
+
+Rules for the facets:
+- Emit a facet only if the abstract states or clearly implies it.
+- If it is unclear, omit that line entirely. Do NOT guess.
+- Use several lines for the same key if more than one value applies.
+- exposure: describes what was done to the subject — whether the study ADDED
+  the substance (supplementation), REMOVED it (deprivation, knockout), or only
+  observed a correlation (association).
+- testarticle: describes the substance actually tested, not the topic of the
+  paper. Use not-stated if the source or form is never specified.`;
       }
 
       async callOllama(prompt) {
@@ -266,7 +313,10 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
           // Drop list markers and numbering the model may add despite the prompt
           .map(line => line.replace(/^[-*\u2022]\s*/, '').replace(/^\d+[.)]\s*/, '').trim())
           .filter(line => line.length > 0 && line.length < 100)
-          .filter(line => !line.endsWith(':'));  // drop headings like "Keywords:"
+          .filter(line => !line.endsWith(':'))   // drop headings like "Keywords:"
+          // Drop section headers the model may emit despite the prompt. Without
+          // this, "FIRST: ..." / "THEN: ..." become tags.
+          .filter(line => !/^(first|then|topical|facets?)\b/i.test(line));
 
         // Case-normalise, then de-duplicate within the item.
         //
@@ -278,15 +328,36 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
         // tags unusable as graph nodes downstream.
         const seen = new Set();
         const tags = [];
-        for (const t of raw) {
-          const n = this.normaliseTag(t);
+        const facets = [];
+
+        for (const line of raw) {
+          // Controlled facets are handled separately and deliberately bypass
+          // normaliseTag: sentence-casing `exposure:knockout` into
+          // `Exposure:knockout` would re-introduce the case fragmentation this
+          // whole pass exists to remove.
+          const m = line.match(/^([A-Za-z]+)\s*:\s*(.+)$/);
+          if (m && Object.prototype.hasOwnProperty.call(FACET_VOCAB, m[1].toLowerCase())) {
+            const key = m[1].toLowerCase();
+            const value = m[2].trim().toLowerCase();
+            if (!FACET_VOCAB[key].includes(value)) {
+              Zotero.debug(`Auto-Tagger: dropped out-of-vocabulary facet "${line}"`);
+              continue;
+            }
+            const facet = `${key}:${value}`;
+            if (!seen.has(facet)) { seen.add(facet); facets.push(facet); }
+            continue;
+          }
+
+          if (tags.length >= 10) continue;  // topical cap; facets still collected
+          const n = this.normaliseTag(line);
           const k = n.toLowerCase();
           if (n && !seen.has(k)) { seen.add(k); tags.push(n); }
-          if (tags.length >= 10) break;
         }
 
-        Zotero.debug(`Auto-Tagger: Parsed ${tags.length} tags from Ollama`);
-        return tags;
+        const all = tags.concat(facets);
+        Zotero.debug(`Auto-Tagger: Parsed ${tags.length} topical tags + ` +
+                     `${facets.length} facets from Ollama`);
+        return all;
       }
 
       // Canonical form: sentence case, with acronyms preserved.
@@ -313,7 +384,28 @@ Respond with ONLY the keywords, one per line. No numbering, no explanation.`;
           // or internal capital i.e. CamelCase (AlphaFold, pH).
           return /[A-Z]{2,}/.test(w) || (/[A-Z]/.test(w) && /\d/.test(w)) || /[a-z][A-Z]/.test(w);
         };
-        const words = t.split(' ').map(w => (keepCase(w) ? w : w.toLowerCase()));
+        // keepCase alone cannot tell a SHORT shouted word from an acronym —
+        // "GENE" and "ELISA" look identical to it — so "GENE EXPRESSION" would
+        // normalise to "GENE expression" and still fragment against
+        // "Gene expression" across items.
+        //
+        // A multi-word tag in which EVERY word is all-caps is shouting, not a
+        // run of acronyms. Tokens under 4 letters or containing digits stay
+        // protected, so "TGF BETA" -> "TGF beta" and "NF KB" -> "NF KB".
+        // Single-word tags are left to keepCase, so ELISA / PCR / NEC survive.
+        const parts = t.split(' ');
+        const allShouted = parts.length > 1 && parts.every(w => {
+          const letters = w.replace(/[^A-Za-z]/g, '');
+          return letters.length > 0 && letters === letters.toUpperCase();
+        });
+
+        const words = parts.map(w => {
+          if (allShouted && !/\d/.test(w) &&
+              w.replace(/[^A-Za-z]/g, '').length >= 4) {
+            return w.toLowerCase();
+          }
+          return keepCase(w) ? w : w.toLowerCase();
+        });
         // Only capitalise a Latin initial. Upper-casing a Greek or other
         // non-Latin initial (αv -> Αv) invents a new variant instead of
         // collapsing one.

@@ -1,6 +1,6 @@
 {
   "name": "zotero-auto-tagger",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Auto-tagging for Zotero. Generates keyword tags from PubMed MeSH terms for biomedical content and a local LLM via Ollama for everything else. No API key required.",
   "author": "David Nunn",
   "license": "MIT",
