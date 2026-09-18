@@ -3,12 +3,12 @@
     "zotero-auto-tagger@dnnunn.github.io": {
       "updates": [
         {
-          "version": "0.7.0",
-          "update_link": "https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.7.0/zotero-auto-tagger-v0.7.0.xpi",
+          "version": "0.7.1",
+          "update_link": "https://github.com/dnnunn/zotero-auto-tagger/releases/download/v0.7.1/zotero-auto-tagger-v0.7.1.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",
-              "strict_max_version": "9.0.*"
+              "strict_max_version": "10.*"
             }
           }
         }

@@ -5,9 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.1] - 2026-09-18
 
 ### Fixed
+- The plugin stopped loading on Zotero 10. `strict_max_version` was pinned to `9.0.*`, which
+  Zotero's version comparator reads as matching only `9.0.x` builds — not `9.1+` and not `10.x` at
+  all. Raised to `10.*` in both `src/manifest.json` and `update.json`.
+
 - `scripts/release.js` produced an unloadable plugin and was the cause of the release-versus-code
   version drift. It hardcoded `0.1.0` in the XPI name; it archived `build/` rather than
   `build/addon/`, so `manifest.json` landed one directory below the archive root and any
@@ -20,8 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `npm run release` as the entry point for a full clean-build-package run.
-
-(Build tooling only — the shipped plugin is unchanged.)
 
 
 ## [0.7.0] - 2026-08-13
